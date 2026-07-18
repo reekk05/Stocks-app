@@ -20,3 +20,9 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token:str
     token_type: str
+
+class TradeRequest(BaseModel):
+    stock_symbol: str
+    quantity:int
+    price: float
+    

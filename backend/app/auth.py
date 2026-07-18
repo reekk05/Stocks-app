@@ -29,14 +29,18 @@ def decode_access_token(token:str):
     
 
 from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import session
 from app.database import get_db
 from app.models import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+bearer_scheme = HTTPBearer()
 
-def get_current_user(token:str = Depends(oauth2_scheme), db:session=Depends(get_db)) -> User:
+def get_current_user(
+        credentials:HTTPAuthorizationCredentials=Depends(bearer_scheme), 
+        db: session = Depends(get_db),
+        ) -> User: 
+    token = credentials.credentials
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")

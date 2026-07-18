@@ -50,3 +50,58 @@ def login (user: UserLogin, db: Session = Depends(get_db)):
     
     access_token = create_access_token(data= {"sub": db_user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+from app.auth import get_current_user
+from app.schemas import TradeRequest
+from app.models import Portfolio, Transaction
+
+@app.post("/buy")
+def buy_stock(
+    trade: TradeRequest,
+    current_user: User= Depends(get_current_user),
+    db:Session=Depends(get_db),
+):
+    if trade.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantitity must be greated than zero")
+    total_cost = trade.quantity*trade.price
+
+    if current_user.balance < total_cost:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
+    
+    current_user.balance -= total_cost
+
+
+    existing_holding = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id==current_user.id, Portfolio.stock_symbol== trade.stock_symbol).first()
+    )
+
+    if existing_holding:
+        total_quantity=existing_holding.quantity+trade.quantity
+        total_value = (existing_holding.avg_buy_price * existing_holding.quantity) + total_cost
+        existing_holding.avg_buy_price = total_value/total_quantity
+        existing_holding.quantity=total_quantity
+    else:
+        new_holding = Portfolio(
+            user_id=current_user.id,
+            stock_symbol=trade.stock_symbol,
+            quantity=trade.quantity,
+            avg_buy_price=trade.price,
+        )
+        db.add(new_holding)
+
+    new_transaction = Transaction(
+        user_id=current_user.id,
+        stock_symbol=trade.stock_symbol,
+        quantity=trade.quantity,
+        price=trade.price,
+        Transaction_type="BUY",
+    )
+    db.add(new_transaction)
+
+    db.commit()
+    return{
+        "messade": "Stock is purchased successfully",
+        "remaining_balance": current_user.balance,
+    }
+        
