@@ -33,7 +33,7 @@ class Transaction(Base):
     stock_symbol = Column(String, nullable=False)
     quantity = Column(Integer, nullable=False)
     price = Column(Float, nullable=False)
-    Transaction_type = Column(String, nullable=False)
+    transaction_type = Column(String, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship ("User", back_populates= "transactions")

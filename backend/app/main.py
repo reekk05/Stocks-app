@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app import models
+from app.instruments import load_instruments, get_instrument_key, search_symbols
+
+load_instruments()
 
 Base.metadata.create_all(bind=engine)
 
@@ -105,3 +108,112 @@ def buy_stock(
         "remaining_balance": current_user.balance,
     }
         
+
+@app.post("/sell")
+def sell_stock(
+    trade: TradeRequest,
+    current_user: User=Depends(get_current_user),
+    db:Session=Depends(get_db),
+):
+    if trade.quantity<=0:
+        raise HTTPException(status_code=400, detail="Quantity must be greated than zero")
+    
+    holding = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id==current_user.id, Portfolio.stock_symbol==trade.stock_symbol)
+        .first()
+    )
+
+    if not holding or holding.quantity<trade.quantity:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid transaction. you dont own enough shares.",
+        )
+    
+    proceeds=trade.quantity*trade.price
+    current_user.balance+=proceeds
+
+    holding.quantity-=trade.quantity
+    if holding.quantity==0:
+        db.delete(holding)
+
+    new_transaction = Transaction(
+        user_id=current_user.id,
+        stock_symbol=trade.stock_symbol,
+        quantity=trade.quantity,
+        price=trade.price,
+        transaction_type="SELL",
+    )
+
+    db.add(new_transaction)
+
+    db.commit()
+
+    return{
+        "message":"stock sold successfully",
+        "remaining_balance": current_user.balance,
+    }
+
+
+from app.schemas import PortfolioResponse
+
+@app.get("/portfolio", response_model=PortfolioResponse)
+def get_portfolio(
+    current_user: User=Depends(get_current_user),
+    db:Session=Depends(get_db),
+):
+    holdings = db.query(Portfolio).filter(Portfolio.user_id==current_user.id).all()
+
+    return{
+        "balance": current_user.balance,
+        "holdings": holdings,
+    }
+
+from app.schemas import TransactionResponse
+
+@app.get("/transactions", response_model=list[TransactionResponse])
+def get_transactions(
+    current_user: User=Depends(get_current_user),
+    db:Session=Depends(get_db),
+):
+    transactions=(
+        db.query(Transaction)
+        .filter(Transaction.user_id==current_user.id)
+        .order_by(Transaction.timestamp.desc())
+        .all()
+    )
+    return transactions
+
+
+@app.get("/stocks/search")
+def search_stocks(query: str):
+    results= search_symbols(query)
+    return{"results": results}
+
+import requests
+
+@app.get("/stocks/price/{symbol}")
+def get_stock_price(symbol: str):
+    instrument_key=get_instrument_key(symbol)
+    if not instrument_key:
+        raise HTTPException(status_code=404, detail="Stock symbol not found")
+    
+
+
+    url= "https://api.upstox.com/v2/market-quote/ltp"
+    params = {"instrument_key": instrument_key}
+    headers= {
+        "Accept": "application/json",
+        "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTVjZjg1NzA4YzFiODBkMjMyNzY0OWIiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NDc3NzgzLCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ0OTg0MDB9.voBW1G8aBPlABwOuCJ3SfDnyvjOihPmlSIm4RXpAeJk"
+        }
+
+    response = requests.get(url, params=params, headers= headers)
+    data= response.json()
+
+    if data.get("status") != "success":
+        raise HTTPException(status_code=502, detail="Failed to fetch price from Upstox")
+    
+    quote_data = list(data["data"].values())[0]
+    last_price=quote_data["last_price"]
+
+    return{"symbol": symbol.upper(), "instrument_key": instrument_key, "price": last_price}
