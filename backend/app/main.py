@@ -34,7 +34,7 @@ from app.models import User
 def register(user: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.username == user.username).first()
     if existing_user:
-        raise HTTPException(status_code=400, details="Username already taken")
+        raise HTTPException(status_code=400, detail="Username already taken")
     
     new_user = User(
         username=user.username,
@@ -66,7 +66,10 @@ def buy_stock(
 ):
     if trade.quantity <= 0:
         raise HTTPException(status_code=400, detail="Quantitity must be greated than zero")
-    total_cost = trade.quantity*trade.price
+
+    price = fetch_live_price(trade.stock_symbol)
+    total_cost = trade.quantity*price
+
 
     if current_user.balance < total_cost:
         raise HTTPException(status_code=400, detail="Insufficient balance")
@@ -89,7 +92,7 @@ def buy_stock(
             user_id=current_user.id,
             stock_symbol=trade.stock_symbol,
             quantity=trade.quantity,
-            avg_buy_price=trade.price,
+            avg_buy_price=price,
         )
         db.add(new_holding)
 
@@ -97,14 +100,14 @@ def buy_stock(
         user_id=current_user.id,
         stock_symbol=trade.stock_symbol,
         quantity=trade.quantity,
-        price=trade.price,
-        Transaction_type="BUY",
+        price=price,
+        transaction_type="BUY",
     )
     db.add(new_transaction)
 
     db.commit()
     return{
-        "messade": "Stock is purchased successfully",
+        "message": "Stock is purchased successfully",
         "remaining_balance": current_user.balance,
     }
         
@@ -118,6 +121,8 @@ def sell_stock(
     if trade.quantity<=0:
         raise HTTPException(status_code=400, detail="Quantity must be greated than zero")
     
+    price = fetch_live_price(trade.stock_symbol)
+
     holding = (
         db.query(Portfolio)
         .filter(Portfolio.user_id==current_user.id, Portfolio.stock_symbol==trade.stock_symbol)
@@ -130,7 +135,7 @@ def sell_stock(
             detail="Invalid transaction. you dont own enough shares.",
         )
     
-    proceeds=trade.quantity*trade.price
+    proceeds=trade.quantity*price
     current_user.balance+=proceeds
 
     holding.quantity-=trade.quantity
@@ -141,7 +146,7 @@ def sell_stock(
         user_id=current_user.id,
         stock_symbol=trade.stock_symbol,
         quantity=trade.quantity,
-        price=trade.price,
+        price=price,
         transaction_type="SELL",
     )
 
@@ -192,28 +197,31 @@ def search_stocks(query: str):
 
 import requests
 
-@app.get("/stocks/price/{symbol}")
-def get_stock_price(symbol: str):
-    instrument_key=get_instrument_key(symbol)
+UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTVlNjMwZTVjMjYxZDM4NzJkMmQ1YTMiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NTcwNjM4LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ1ODQ4MDB9.5zorobhSNnkQ7bfC2AUxy-t9NiKdaBHsoMx9_v6CtJA"  # your token
+
+def fetch_live_price(symbol: str) -> float:
+    instrument_key = get_instrument_key(symbol)
     if not instrument_key:
         raise HTTPException(status_code=404, detail="Stock symbol not found")
-    
 
-
-    url= "https://api.upstox.com/v2/market-quote/ltp"
+    url = "https://api.upstox.com/v2/market-quote/ltp"
     params = {"instrument_key": instrument_key}
-    headers= {
+    headers = {
         "Accept": "application/json",
-        "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTVjZjg1NzA4YzFiODBkMjMyNzY0OWIiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NDc3NzgzLCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ0OTg0MDB9.voBW1G8aBPlABwOuCJ3SfDnyvjOihPmlSIm4RXpAeJk"
-        }
+        "Authorization": f"Bearer {UPSTOX_LIVE_ACCESS_TOKEN}"
+    }
 
-    response = requests.get(url, params=params, headers= headers)
-    data= response.json()
+    response = requests.get(url, params=params, headers=headers)
+    data = response.json()
 
     if data.get("status") != "success":
         raise HTTPException(status_code=502, detail="Failed to fetch price from Upstox")
-    
-    quote_data = list(data["data"].values())[0]
-    last_price=quote_data["last_price"]
 
-    return{"symbol": symbol.upper(), "instrument_key": instrument_key, "price": last_price}
+    quote_data = list(data["data"].values())[0]
+    return quote_data["last_price"]
+
+@app.get("/stocks/price/{symbol}")
+def get_stock_price(symbol: str):
+    price = fetch_live_price(symbol)
+    return {"symbol": symbol.upper(), "price": price}
+

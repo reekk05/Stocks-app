@@ -24,7 +24,6 @@ class Token(BaseModel):
 class TradeRequest(BaseModel):
     stock_symbol: str
     quantity:int
-    price: float
 
 class HoldingResponse(BaseModel):
     stock_symbol: str
