@@ -12,7 +12,7 @@ app = FastAPI (title= "paper trading API")
 
 app.add_middleware(
     CORSMiddleware, 
-    allow_origins = ["http://localhost:3000"],
+    allow_origins = ["http://localhost:5173"],
     allow_credentials=True, 
     allow_methods=["*"],
     allow_headers=["*"]
@@ -174,7 +174,7 @@ def get_portfolio(
         current_price= fetch_live_price(holding.stock_symbol)
         current_value = holding.quantity * current_price
         cost_basis= holding.quantity * holding.avg_buy_price
-        profit_loss = current_price - cost_basis
+        profit_loss = current_value - cost_basis
 
         holdings_response.append({
             "stock_symbol": holding.stock_symbol,
