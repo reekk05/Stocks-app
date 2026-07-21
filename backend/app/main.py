@@ -169,9 +169,25 @@ def get_portfolio(
 ):
     holdings = db.query(Portfolio).filter(Portfolio.user_id==current_user.id).all()
 
+    holdings_response=[]
+    for holding in holdings:
+        current_price= fetch_live_price(holding.stock_symbol)
+        current_value = holding.quantity * current_price
+        cost_basis= holding.quantity * holding.avg_buy_price
+        profit_loss = current_price - cost_basis
+
+        holdings_response.append({
+            "stock_symbol": holding.stock_symbol,
+            "quantity": holding.quantity,
+            "avg_buy_price": holding.avg_buy_price,
+            "current_price": current_price,
+            "current_value": current_value,
+            "profit_loss": profit_loss,
+        })
+
     return{
         "balance": current_user.balance,
-        "holdings": holdings,
+        "holdings": holdings_response
     }
 
 from app.schemas import TransactionResponse

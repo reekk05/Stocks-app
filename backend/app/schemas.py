@@ -29,9 +29,10 @@ class HoldingResponse(BaseModel):
     stock_symbol: str
     quantity:int
     avg_buy_price:float
+    current_price: float
+    current_value: float
+    profit_loss: float 
 
-    class Config:
-        from_attributes=True
     
 class PortfolioResponse(BaseModel):
     balance: float
