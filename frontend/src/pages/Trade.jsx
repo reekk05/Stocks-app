@@ -1,5 +1,6 @@
 import {useState} from "react";
 import apiClient from "../api/client";
+import Toast from "../components/Toast";
 
 export default function Trade() {
   const [query, setQuery] = useState("");
@@ -7,9 +8,9 @@ export default function Trade() {
   const [selectedSymbol, setSelectedSymbol] = useState(null);
   const [price, setPrice]= useState(null);
   const [quantity, setQuantity] = useState(1);
-  const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
   const [loadingPrice, setLoadingPrice] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -27,7 +28,6 @@ export default function Trade() {
   };
   const handleSelectStock = async(symbol) =>{
     setSelectedSymbol(symbol);
-    setMessage(null);
     setError("");
     setLoadingPrice(true);
 
@@ -44,25 +44,34 @@ export default function Trade() {
   };
 
   const handleTrade = async (type) => {
-    setMessage(null);
     setError("");
 
-    try{
-      const response=await apiClient.post(`${type}`, {
+    try {
+      const response = await apiClient.post(`/${type}`, {
         stock_symbol: selectedSymbol,
-        quantity: Number(quantity)
+        quantity: Number(quantity),
       });
-      setMessage(
-        `${type==="buy"? "Bought" : "Sold" } ${quantity} share(s) of ${selectedSymbol}. Balance: ₹${response.data.remaining_balance.toFixed(2)}`
-      );
+      setToast({
+        message: `${type === "buy" ? "Bought" : "Sold"} ${quantity} share(s) of ${selectedSymbol}`,
+        type: "success",
+      });
       handleSelectStock(selectedSymbol);
-    }catch(err) {
+    } catch (err) {
       console.error(err);
-      setError(err.response?.data?.detail || "Trade failed");
+      const detail = err.response?.data?.detail || "Trade failed";
+      setError(detail);
+      setToast({ message: detail, type: "error" });
     }
   };
   return (
     <div className="p-8 max-w-3xl mx-auto">
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
       <h1 className="text-xl font-semibold mb-8">Trade</h1>
 
       <form onSubmit={handleSearch} className="flex gap-2 mb-6">
@@ -128,7 +137,6 @@ export default function Trade() {
           )}
 
           {error && <p className="text-loss text-sm mb-4">{error}</p>}
-          {message && <p className="text-gain text-sm mb-4">{message}</p>}
 
           <div className="flex gap-3">
             <button

@@ -18,6 +18,8 @@ export default function Dashboard() {
         };
 
         fetchPortfolio();
+        const interval = setInterval(fetchPortfolio, 5000);
+        return () => clearInterval(interval);
     },[]);
 
     if(error) {

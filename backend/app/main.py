@@ -70,12 +70,21 @@ def buy_stock(
     price = fetch_live_price(trade.stock_symbol)
     total_cost = trade.quantity*price
 
+    instrument_token = get_instrument_key(trade.stock_symbol)
 
     if current_user.balance < total_cost:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
-    
-    current_user.balance -= total_cost
+     raise HTTPException(status_code=400, detail="Insufficient balance")
 
+    order_response = place_order(
+    instrument_token=instrument_token,
+    quantity=trade.quantity,
+    transaction_type="BUY",
+)
+
+    if order_response.get("status") != "success":
+     raise HTTPException(status_code=400, detail=order_response)
+
+    current_user.balance -= total_cost
 
     existing_holding = (
         db.query(Portfolio)
@@ -135,11 +144,22 @@ def sell_stock(
             detail="Invalid transaction. you dont own enough shares.",
         )
     
-    proceeds=trade.quantity*price
-    current_user.balance+=proceeds
+    instrument_token = get_instrument_key(trade.stock_symbol)
 
-    holding.quantity-=trade.quantity
-    if holding.quantity==0:
+    order_response = place_order(
+        instrument_token=instrument_token,
+        quantity=trade.quantity,
+        transaction_type="SELL",
+    )
+
+    if order_response.get("status") != "success":
+        raise HTTPException(status_code=400, detail=order_response)
+
+    proceeds = trade.quantity * price
+    current_user.balance += proceeds
+
+    holding.quantity -= trade.quantity
+    if holding.quantity == 0:
         db.delete(holding)
 
     new_transaction = Transaction(
@@ -151,14 +171,12 @@ def sell_stock(
     )
 
     db.add(new_transaction)
-
     db.commit()
 
-    return{
-        "message":"stock sold successfully",
+    return {
+        "message": "Stock sold successfully",
         "remaining_balance": current_user.balance,
     }
-
 
 from app.schemas import PortfolioResponse
 
@@ -213,7 +231,9 @@ def search_stocks(query: str):
 
 import requests
 
-UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTVlNjMwZTVjMjYxZDM4NzJkMmQ1YTMiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NTcwNjM4LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ1ODQ4MDB9.5zorobhSNnkQ7bfC2AUxy-t9NiKdaBHsoMx9_v6CtJA"  # your token
+UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTYwZGIwYTA2OTM4ZDI2YjRkNTM2OWQiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NzMyNDI2LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ3NTc2MDB9.QVDd4LogmjAmuDQIQtMV_x2DJF5UFDMAnBo4mPzqqdE"  # your token
+
+UPSTOX_SANDBOX_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTU2MWVlNWYzZGMxNTFhOGVlZGUwNWUiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0MDI4OTAxLCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODY1NzIwMDB9.FwY7_9p1f043DlF430-E-AhwEaQd8l_2WaEklFoLZoM"
 
 def fetch_live_price(symbol: str) -> float:
     instrument_key = get_instrument_key(symbol)
@@ -235,6 +255,43 @@ def fetch_live_price(symbol: str) -> float:
 
     quote_data = list(data["data"].values())[0]
     return quote_data["last_price"]
+
+def place_order(
+    instrument_token: str,
+    quantity: int,
+    transaction_type: str,
+):
+    url = "https://api-sandbox.upstox.com/v2/order/place"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {UPSTOX_SANDBOX_ACCESS_TOKEN}",
+    }
+
+    payload = {
+        "quantity": quantity,
+        "product": "D",
+        "validity": "DAY",
+        "price": 0,
+        "tag": "paper-trading",
+        "instrument_token": instrument_token,
+        "order_type": "MARKET",
+        "transaction_type": transaction_type,
+        "disclosed_quantity": 0,
+        "trigger_price": 0,
+        "is_amo": False,
+        "slice": False,
+        "market_protection": 0,
+    }
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=payload,
+    )
+
+    print(response.json())
+    return response.json()
 
 @app.get("/stocks/price/{symbol}")
 def get_stock_price(symbol: str):
