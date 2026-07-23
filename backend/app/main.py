@@ -118,6 +118,8 @@ def buy_stock(
     return{
         "message": "Stock is purchased successfully",
         "remaining_balance": current_user.balance,
+        "order_status": order_response.get("details", {}).get("status"),
+        "average_price": order_response.get("details", {}).get("average_price"),
     }
         
 
@@ -176,6 +178,8 @@ def sell_stock(
     return {
         "message": "Stock sold successfully",
         "remaining_balance": current_user.balance,
+        "order_status": order_response.get("details", {}).get("status"),
+        "average_price": order_response.get("details", {}).get("average_price")
     }
 
 from app.schemas import PortfolioResponse
@@ -231,7 +235,7 @@ def search_stocks(query: str):
 
 import requests
 
-UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTYxNWQ2YzU1NmJhNzJjYTY5ZjdiMzEiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NzY1ODA0LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ4NDQwMDB9.jki3xVdXGAqqBN-qfp5J2S00Kzvpa6aDxmuDQr1aF4s"  # your token
+UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTYyODliMjMwOGUzYTM2Mzc0N2IxMDgiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaXNFeHRlbmRlZCI6dHJ1ZSwiaWF0IjoxNzg0ODQyNjc0LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE4MTYzODAwMDB9.eCcB7-LHL7jDY7T4yD3qBPPnX7uINsgmXEee2XlpdWI"
 
 UPSTOX_SANDBOX_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTU2MWVlNWYzZGMxNTFhOGVlZGUwNWUiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0MDI4OTAxLCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODY1NzIwMDB9.FwY7_9p1f043DlF430-E-AhwEaQd8l_2WaEklFoLZoM"
 
@@ -280,8 +284,6 @@ def place_order(
         "disclosed_quantity": 0,
         "trigger_price": 0,
         "is_amo": False,
-        "slice": False,
-        "market_protection": 0,
     }
 
     response = requests.post(
@@ -289,6 +291,19 @@ def place_order(
         headers=headers,
         json=payload,
     )
+    result = response.json()
+
+    if result.get("status") != "success":
+        return result
+
+    order_id = result["data"]["order_id"]
+    details = get_order_details(order_id)
+
+    return{
+        "status": "success",
+        "order_id": order_id,
+        "details": details.get("data", {}),
+    }
 
     print(response.json())
     return response.json()
@@ -339,3 +354,14 @@ def fetch_ohlc(symbol:str) ->dict:
 @app.get("/stocks/ohlc/{symbol}")
 def get_stock_ohlc(symbol: str):
     return fetch_ohlc(symbol)
+
+def get_order_details(order_id: str) -> dict:
+    url = "https://api-sandbox.upstox.com/v2/order/details"
+    headers= {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {UPSTOX_LIVE_ACCESS_TOKEN}",
+    }
+    params = {"order_id": order_id}
+
+    response = requests.get(url, headers=headers, params=params)
+    return response.json()

@@ -11,6 +11,7 @@ export default function Trade() {
   const [error, setError] = useState("");
   const [loadingPrice, setLoadingPrice] = useState(false);
   const [toast, setToast] = useState(null);
+  const [confirmSell, setConfirmSell] = useState(false);
 
 
   const [recentSearches, setRecentSearches] = useState(() => {
@@ -84,7 +85,7 @@ export default function Trade() {
       });
       console.log("Trade response:", response.data);
       setToast({
-        message: `${type === "buy" ? "Bought" : "Sold"} ${quantity} share(s) of ${selectedSymbol}`,
+        message: `${type === "buy" ? "Bought" : "Sold"} ${quantity} share(s) of ${selectedSymbol}${response.data.average_price ? ` at ₹${response.data.average_price.toFixed(2)}` : "" } · ${response.data.order_status || "confirmed"}`,
         type: "success",
       });
       handleSelectStock(selectedSymbol);
@@ -113,74 +114,74 @@ export default function Trade() {
           placeholder="Search stock symbol, e.g. RELIANCE"
           className="flex-1 bg-surface border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
         />
-      {!query && recentSearches.length > 0 && (
-        <div className="mb-6">
-          <p className="text-muted text-xs uppercase tracking-wide mb-2">Recent</p>
-          <div className="flex flex-wrap gap-2">
-            {recentSearches.map((symbol) => (
-              <button
-                key={symbol}
-                onClick={() => handleSelectStock(symbol)}
-                className="text-xs bg-surface border border-border rounded-full px-3 py-1.5 text-muted hover:text-text hover:border-accent transition-colors"
-              >
-                {symbol}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {query && results.length > 0 && (
-        <div className="bg-surface border border-border rounded-xl mb-8 overflow-hidden">
-          {results.map((symbol) => (
+    {!query && recentSearches.length > 0 && (
+      <div className="mb-6">
+        <p className="text-muted text-xs uppercase tracking-wide mb-2">Recent</p>
+        <div className="flex flex-wrap gap-2">
+          {recentSearches.map((symbol) => (
             <button
               key={symbol}
               onClick={() => handleSelectStock(symbol)}
-              className={`w-full text-left px-4 py-3 text-sm border-b border-border last:border-b-0 hover:bg-bg transition-colors ${
-                selectedSymbol === symbol ? "bg-bg text-accent" : ""
-              }`}
+              className="text-xs bg-surface border border-border rounded-full px-3 py-1.5 text-muted hover:text-text hover:border-accent transition-colors"
             >
               {symbol}
             </button>
           ))}
         </div>
-      )}
+      </div>
+    )}
+    {query && results.length > 0 && (
+      <div className="bg-surface border border-border rounded-xl mb-8 overflow-hidden">
+        {results.map((symbol) => (
+          <button
+            key={symbol}
+            onClick={() => handleSelectStock(symbol)}
+            className={`w-full text-left px-4 py-3 text-sm border-b border-border last:border-b-0 hover:bg-bg transition-colors ${
+              selectedSymbol === symbol ? "bg-bg text-accent" : ""
+            }`}
+          >
+            {symbol}
+          </button>
+        ))}
+      </div>
+    )}
 
-      {selectedSymbol && (
-        <div className="bg-surface border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <p className="text-muted text-xs uppercase tracking-wide mb-1">Selected</p>
-              <p className="text-lg font-semibold">{selectedSymbol}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-muted text-xs uppercase tracking-wide mb-1">Live Price</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {loadingPrice ? "..." : ohlc ? `₹${ohlc.last_price.toFixed(2)}` : "—"}
+    {selectedSymbol && (
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p className="text-muted text-xs uppercase tracking-wide mb-1">Selected</p>
+            <p className="text-lg font-semibold">{selectedSymbol}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-muted text-xs uppercase tracking-wide mb-1">Live Price</p>
+            <p className="text-lg font-semibold tabular-nums">
+              {loadingPrice ? "..." : ohlc ? `₹${ohlc.last_price.toFixed(2)}` : "—"}
+            </p>
+            {ohlc && (
+              <p className={`text-xs tabular-nums ${ohlc.change >= 0 ? "text-gain" : "text-loss"}`}>
+                {ohlc.change >= 0 ? "+" : ""}{ohlc.change.toFixed(2)} ({ohlc.change_percent.toFixed(2)}%)
               </p>
-              {ohlc && (
-                <p className={`text-xs tabular-nums ${ohlc.change >= 0 ? "text-gain" : "text-loss"}`}>
-                  {ohlc.change >= 0 ? "+" : ""}{ohlc.change.toFixed(2)} ({ohlc.change_percent.toFixed(2)}%)
-                </p>
-              )}
+            )}
+          </div>
+        </div>
+
+    {ohlc && (
+          <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+            <div>
+              <p className="text-muted text-xs uppercase tracking-wide mb-1">Open</p>
+              <p className="tabular-nums">₹{ohlc.open.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-muted text-xs uppercase tracking-wide mb-1">High</p>
+              <p className="tabular-nums">₹{ohlc.high.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-muted text-xs uppercase tracking-wide mb-1">Low</p>
+              <p className="tabular-nums">₹{ohlc.low.toFixed(2)}</p>
             </div>
           </div>
-
-      {ohlc && (
-            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-              <div>
-                <p className="text-muted text-xs uppercase tracking-wide mb-1">Open</p>
-                <p className="tabular-nums">₹{ohlc.open.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-muted text-xs uppercase tracking-wide mb-1">High</p>
-                <p className="tabular-nums">₹{ohlc.high.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-muted text-xs uppercase tracking-wide mb-1">Low</p>
-                <p className="tabular-nums">₹{ohlc.low.toFixed(2)}</p>
-              </div>
-            </div>
-          )}
+        )}
 
     <label className="text-xs text-muted uppercase tracking-wide">Quantity</label>
     <input
@@ -207,11 +208,43 @@ export default function Trade() {
         Buy
       </button>
       <button
-        onClick={() => handleTrade("sell")}
+        onClick={() => setConfirmSell(true)}
         className="flex-1 bg-loss text-white font-medium rounded-lg py-2.5 text-sm hover:opacity-90 transition-opacity"
       >
         Sell
       </button>
+    </div>
+  </div>
+)}
+
+{confirmSell && (
+  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="bg-surface border border-border rounded-xl p-6 w-80">
+      <h2 className="text-base font-medium mb-2">Confirm Sell</h2>
+      <p className="text-sm text-muted mb-6">
+        Sell {quantity} share(s) of {selectedSymbol} for approximately{" "}
+        <span className="text-text tabular-nums">
+          ₹{ohlc ? (ohlc.last_price * quantity).toFixed(2) : "—"}
+        </span>
+        ?
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => setConfirmSell(false)}
+          className="flex-1 bg-bg border border-border rounded-lg py-2 text-sm text-muted hover:text-text transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            setConfirmSell(false);
+            handleTrade("sell");
+          }}
+          className="flex-1 bg-loss text-white rounded-lg py-2 text-sm hover:opacity-90 transition-opacity"
+        >
+          Confirm Sell
+        </button>
+      </div>
     </div>
   </div>
 )}
