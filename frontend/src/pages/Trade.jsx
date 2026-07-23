@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useState, useEffect} from "react";
 import apiClient from "../api/client";
 import Toast from "../components/Toast";
 
@@ -6,42 +6,73 @@ export default function Trade() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
-  const [price, setPrice]= useState(null);
+  const [ohlc, setOhlc]= useState(null);
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState("");
   const [loadingPrice, setLoadingPrice] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if(!query.trim()) return;
 
-    try{
-      const response=await apiClient.get("/stocks/search", {
-        params:{query},
-      });
-      setResults(response.data.results);
-    } catch(err) {
-      console.error(err);
-      setError("Search failed");
-    }
-  };
+  const [recentSearches, setRecentSearches] = useState(() => {
+  const saved = localStorage.getItem("recentSearches");
+  return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(()=> {
+    if(!query.trim()) return; 
+    const timeout=setTimeout(async () => {
+      try {
+        const response = await apiClient.get("/stocks/search",{
+          params:{query},
+        });
+        setResults(response.data.results);
+      } catch (err) {
+        console.error(err);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [query]);
+
+
   const handleSelectStock = async(symbol) =>{
     setSelectedSymbol(symbol);
     setError("");
     setLoadingPrice(true);
+    setQuery("");
+    setResults([]);
+
+    const updated = [symbol, ...recentSearches.filter((s)=>s !== symbol)].slice(0,5);
+    setRecentSearches(updated);
+    localStorage.setItem("recentSearches", JSON.stringify(updated));
 
     try{
-      const response = await apiClient.get(`/stocks/price/${symbol}`);
-      setPrice(response.data.price);
+      const response = await apiClient.get(`/stocks/ohlc/${symbol}`);
+      console.log("OHLC response:", response.data);
+      setOhlc(response.data);
     }catch (err){
       console.error(err);
       setError("Failed to fetch price");
-      setPrice(null);
+      setOhlc(null);
     } finally{
       setLoadingPrice(false);
     }
   };
+
+  useEffect(() => {
+  if (!selectedSymbol) return;
+
+  const interval = setInterval(async () => {
+    try {
+      const response = await apiClient.get(`/stocks/ohlc/${selectedSymbol}`);
+      setOhlc(response.data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, 5000);
+
+  return () => clearInterval(interval);
+  }, [selectedSymbol]);
 
   const handleTrade = async (type) => {
     setError("");
@@ -51,6 +82,7 @@ export default function Trade() {
         stock_symbol: selectedSymbol,
         quantity: Number(quantity),
       });
+      console.log("Trade response:", response.data);
       setToast({
         message: `${type === "buy" ? "Bought" : "Sold"} ${quantity} share(s) of ${selectedSymbol}`,
         type: "success",
@@ -74,7 +106,6 @@ export default function Trade() {
       )}
       <h1 className="text-xl font-semibold mb-8">Trade</h1>
 
-      <form onSubmit={handleSearch} className="flex gap-2 mb-6">
         <input
           type="text"
           value={query}
@@ -82,15 +113,23 @@ export default function Trade() {
           placeholder="Search stock symbol, e.g. RELIANCE"
           className="flex-1 bg-surface border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
         />
-        <button
-          type="submit"
-          className="bg-accent text-bg font-medium rounded-lg px-5 text-sm hover:bg-accent-dim transition-colors"
-        >
-          Search
-        </button>
-      </form>
-
-      {results.length > 0 && (
+      {!query && recentSearches.length > 0 && (
+        <div className="mb-6">
+          <p className="text-muted text-xs uppercase tracking-wide mb-2">Recent</p>
+          <div className="flex flex-wrap gap-2">
+            {recentSearches.map((symbol) => (
+              <button
+                key={symbol}
+                onClick={() => handleSelectStock(symbol)}
+                className="text-xs bg-surface border border-border rounded-full px-3 py-1.5 text-muted hover:text-text hover:border-accent transition-colors"
+              >
+                {symbol}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {query && results.length > 0 && (
         <div className="bg-surface border border-border rounded-xl mb-8 overflow-hidden">
           {results.map((symbol) => (
             <button
@@ -116,44 +155,66 @@ export default function Trade() {
             <div className="text-right">
               <p className="text-muted text-xs uppercase tracking-wide mb-1">Live Price</p>
               <p className="text-lg font-semibold tabular-nums">
-                {loadingPrice ? "..." : price !== null ? `₹${price.toFixed(2)}` : "—"}
+                {loadingPrice ? "..." : ohlc ? `₹${ohlc.last_price.toFixed(2)}` : "—"}
               </p>
+              {ohlc && (
+                <p className={`text-xs tabular-nums ${ohlc.change >= 0 ? "text-gain" : "text-loss"}`}>
+                  {ohlc.change >= 0 ? "+" : ""}{ohlc.change.toFixed(2)} ({ohlc.change_percent.toFixed(2)}%)
+                </p>
+              )}
             </div>
           </div>
 
-          <label className="text-xs text-muted uppercase tracking-wide">Quantity</label>
-          <input
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 mt-1 mb-6 text-sm focus:outline-none focus:border-accent"
-          />
-
-          {price !== null && quantity > 0 && (
-            <p className="text-sm text-muted mb-6">
-              Estimated total: <span className="tabular-nums text-text">₹{(price * quantity).toFixed(2)}</span>
-            </p>
+      {ohlc && (
+            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
+              <div>
+                <p className="text-muted text-xs uppercase tracking-wide mb-1">Open</p>
+                <p className="tabular-nums">₹{ohlc.open.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-muted text-xs uppercase tracking-wide mb-1">High</p>
+                <p className="tabular-nums">₹{ohlc.high.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-muted text-xs uppercase tracking-wide mb-1">Low</p>
+                <p className="tabular-nums">₹{ohlc.low.toFixed(2)}</p>
+              </div>
+            </div>
           )}
 
-          {error && <p className="text-loss text-sm mb-4">{error}</p>}
+    <label className="text-xs text-muted uppercase tracking-wide">Quantity</label>
+    <input
+      type="number"
+      min="1"
+      value={quantity}
+      onChange={(e) => setQuantity(e.target.value)}
+      className="w-full bg-bg border border-border rounded-lg px-3 py-2 mt-1 mb-6 text-sm focus:outline-none focus:border-accent"
+    />
 
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleTrade("buy")}
-              className="flex-1 bg-gain text-bg font-medium rounded-lg py-2.5 text-sm hover:opacity-90 transition-opacity"
-            >
-              Buy
-            </button>
-            <button
-              onClick={() => handleTrade("sell")}
-              className="flex-1 bg-loss text-white font-medium rounded-lg py-2.5 text-sm hover:opacity-90 transition-opacity"
-            >
-              Sell
-            </button>
-          </div>
-        </div>
-      )}
+    {ohlc && quantity > 0 && (
+      <p className="text-sm text-muted mb-6">
+        Estimated total: <span className="tabular-nums text-text">₹{(ohlc.last_price * quantity).toFixed(2)}</span>
+      </p>
+    )}
+
+    {error && <p className="text-loss text-sm mb-4">{error}</p>}
+
+    <div className="flex gap-3">
+      <button
+        onClick={() => handleTrade("buy")}
+        className="flex-1 bg-gain text-bg font-medium rounded-lg py-2.5 text-sm hover:opacity-90 transition-opacity"
+      >
+        Buy
+      </button>
+      <button
+        onClick={() => handleTrade("sell")}
+        className="flex-1 bg-loss text-white font-medium rounded-lg py-2.5 text-sm hover:opacity-90 transition-opacity"
+      >
+        Sell
+      </button>
+    </div>
+  </div>
+)}
     </div>
   );
 }

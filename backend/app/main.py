@@ -231,7 +231,7 @@ def search_stocks(query: str):
 
 import requests
 
-UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTYwZGIwYTA2OTM4ZDI2YjRkNTM2OWQiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NzMyNDI2LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ3NTc2MDB9.QVDd4LogmjAmuDQIQtMV_x2DJF5UFDMAnBo4mPzqqdE"  # your token
+UPSTOX_LIVE_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTYxNWQ2YzU1NmJhNzJjYTY5ZjdiMzEiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0NzY1ODA0LCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODQ4NDQwMDB9.jki3xVdXGAqqBN-qfp5J2S00Kzvpa6aDxmuDQr1aF4s"  # your token
 
 UPSTOX_SANDBOX_ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI2MkNEMzciLCJqdGkiOiI2YTU2MWVlNWYzZGMxNTFhOGVlZGUwNWUiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6dHJ1ZSwiaWF0IjoxNzg0MDI4OTAxLCJpc3MiOiJ1ZGFwaS1nYXRld2F5LXNlcnZpY2UiLCJleHAiOjE3ODY1NzIwMDB9.FwY7_9p1f043DlF430-E-AhwEaQd8l_2WaEklFoLZoM"
 
@@ -298,3 +298,44 @@ def get_stock_price(symbol: str):
     price = fetch_live_price(symbol)
     return {"symbol": symbol.upper(), "price": price}
 
+def fetch_ohlc(symbol:str) ->dict:
+    instrument_key=get_instrument_key(symbol)
+    if not instrument_key:
+        raise HTTPException(status_code=404, detail="Stock symbol not found")
+
+    url="https://api.upstox.com/v3/market-quote/ohlc"
+    params = {"instrument_key": instrument_key, "interval": "1d"}
+    headers={
+        "Accept": "application/json",
+        "Authorization": f"Bearer {UPSTOX_LIVE_ACCESS_TOKEN}"
+    }
+
+    response = requests.get(url, params=params, headers=headers)
+    data = response.json()
+
+    if data.get("status") != "success":
+        raise HTTPException(status_code=502, detail="Failed to fetch OHLC data")
+
+    quote_data = list(data["data"].values())[0]
+    live = quote_data["live_ohlc"]
+    last_price=quote_data["last_price"]
+
+    prev_ohlc = quote_data.get("prev_ohlc")
+    prev_close = prev_ohlc["close"] if prev_ohlc else live ["open"]
+
+    change = last_price - prev_close
+    change_percent = (change/prev_close) * 100 if prev_close else 0
+
+    return {
+        "last_price": last_price,
+        "open": live["open"],
+        "high": live["high"],
+        "low": live["low"],
+        "prev_close":prev_close,
+        "change": change,
+        "change_percent": change_percent,
+    }
+
+@app.get("/stocks/ohlc/{symbol}")
+def get_stock_ohlc(symbol: str):
+    return fetch_ohlc(symbol)
